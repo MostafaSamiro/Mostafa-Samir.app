@@ -90,6 +90,10 @@ html[data-theme="light"] .blob{ opacity:.22; }
   mix-blend-mode:screen;
 }
 html[data-theme="light"] .aurora{ mix-blend-mode:multiply; opacity:.5; }
+/* Disable blob will-change on touch — prevents unnecessary compositing layers */
+@media(hover:none){
+  .blob{ will-change:auto; }
+}
 @keyframes auroraSpin{ from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
 @keyframes float1{
   0%,100%{ transform:translate(0,0) scale(1); }
@@ -705,17 +709,29 @@ footer .fmeta{ font-size:12.5px; color:var(--text-faint); }
 footer .fsocial{ display:flex; gap:10px; }
 
 /* ============ REVEAL ANIM ============ */
-.reveal, .reveal.in-view { opacity:1; transform:translateY(0); transition:opacity .8s cubic-bezier(.16,.84,.44,1), transform .8s cubic-bezier(.16,.84,.44,1); }
-.reveal-stag > *, .reveal-stag.in-view > * { opacity:1; transform:translateY(0); transition:opacity .7s ease,transform .7s ease; }
-.reveal-stag > *:nth-child(1){transition-delay:.05s;}
-.reveal-stag > *:nth-child(2){transition-delay:.12s;}
-.reveal-stag > *:nth-child(3){transition-delay:.19s;}
-.reveal-stag > *:nth-child(4){transition-delay:.26s;}
-.reveal-stag > *:nth-child(5){transition-delay:.33s;}
-.reveal-stag > *:nth-child(6){transition-delay:.4s;}
+/* Only animate on desktop (pointer:fine = mouse device) */
+@media(pointer:fine){
+  /* Hidden state — elements start invisible and slide up */
+  .reveal{ opacity:0; transform:translateY(28px); transition:opacity .8s cubic-bezier(.16,.84,.44,1), transform .8s cubic-bezier(.16,.84,.44,1); }
+  .reveal.in-view{ opacity:1; transform:translateY(0); }
+  /* Staggered children */
+  .reveal-stag > *{ opacity:0; transform:translateY(22px); transition:opacity .7s ease,transform .7s ease; }
+  .reveal-stag.in-view > *{ opacity:1; transform:translateY(0); }
+  .reveal-stag > *:nth-child(1){transition-delay:.05s;}
+  .reveal-stag > *:nth-child(2){transition-delay:.12s;}
+  .reveal-stag > *:nth-child(3){transition-delay:.19s;}
+  .reveal-stag > *:nth-child(4){transition-delay:.26s;}
+  .reveal-stag > *:nth-child(5){transition-delay:.33s;}
+  .reveal-stag > *:nth-child(6){transition-delay:.4s;}
+}
+/* On touch/mobile — everything is always visible, no reveal needed */
+@media(pointer:coarse){
+  .reveal, .reveal-stag > *{ opacity:1 !important; transform:none !important; transition:none !important; }
+}
 
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important; }
+  .reveal,.reveal-stag > *{ opacity:1 !important; transform:none !important; }
 }
 
 /* ============ LIGHT MODE ELEVATION ============ */
@@ -1445,11 +1461,47 @@ html[dir="rtl"] .cs-slide-counter{ right:auto; left:10px; }
   .cs-showcase-stage{ aspect-ratio:4/5; }
 }
 
-@media(max-width:768px){
-  /* Performance optimizations for mobile scrolling */
-  .blob, .aurora { animation: none !important; transform: none !important; }
+/* ============ MOBILE PERFORMANCE & VISUAL FIXES ============ */
+@media(max-width:768px),
+@media(hover:none){
+  /* Stop all background animations for smooth scrolling */
+  .blob, .aurora { animation: none !important; transform: none !important; will-change: auto !important; }
+  /* Reduce blob count — hide least important ones */
+  .blob-3, .blob-4, .blob-5 { display: none; }
+  /* Shrink remaining blobs so they don't overlap on small screens */
+  .blob-1 { width: 320px; height: 320px; top: -100px; right: -80px; opacity: .35; }
+  .blob-2 { width: 280px; height: 280px; bottom: -100px; left: -80px; opacity: .25; }
+  /* Disable aurora completely on mobile */
+  .aurora { display: none; }
+  /* Remove heavy blur from ambient background to prevent scroll jank */
+  .ambient { transition: none; }
+  /* Disable 3D card transforms */
+  .pcard { transform: none !important; transform-style: flat !important; }
   .pcard:hover { transform: none !important; box-shadow: var(--shadow-sm) !important; }
+  /* Disable expensive backdrop-filter on non-critical elements */
+  .badge, .about-card, .contact-item, .contact-form,
+  .field input, .field textarea, .chip-row span,
+  .pcard-kicker { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  /* Keep header backdrop-filter (important for legibility) but reduce it */
+  header { backdrop-filter: blur(16px) !important; -webkit-backdrop-filter: blur(16px) !important; }
+  /* Remove hero visual pseudo-elements (heavy radial gradients) */
   .hero-visual::before, .hero-visual::after { display: none !important; }
+  /* Stop phone glow animation */
+  .phone { animation: none !important; }
+  /* Disable pcard border spin animation */
+  .pcard-border::before { animation: none !important; }
+  /* Stop icon breathe animation */
+  .pcard-icon { animation: none !important; }
+  /* Disable floating device frame animation */
+  .cs-device-frame { animation: none !important; }
+  /* Reduce shimmer animation cost — disable background-position animation */
+  .hero h1 .accent { animation: none !important; background-position: 0% 50% !important; }
+  /* Stop scan animation in avatar */
+  .avatar .scan { animation: none !important; }
+  /* Keep card tilt off on touch */
+  .pcard { will-change: auto !important; }
+  /* Prevent horizontal overflow from blobs */
+  .ambient { overflow: hidden; }
 }
 </style>
 </head>
@@ -2080,7 +2132,7 @@ if(avatarPhoto && avatarInitials){
 
 /* ---------- Header scroll state ---------- */
 const header = document.getElementById('header');
-window.addEventListener('scroll', ()=>{ header.classList.toggle('scrolled', scrollY>10); });
+window.addEventListener('scroll', ()=>{ header.classList.toggle('scrolled', scrollY>10); }, { passive: true });
 
 /* ---------- Mobile nav ---------- */
 const hamburger = document.getElementById('hamburger');
@@ -3051,17 +3103,26 @@ function initReveals(){
   if('IntersectionObserver' in window){
     const io = new IntersectionObserver((entries)=>{
       entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add('in-view'); io.unobserve(en.target); } });
-    },{ threshold:.02, rootMargin:'0px 0px 50px 0px' });
+    },{ threshold:.01, rootMargin:'0px 0px 80px 0px' });
     revealElements.forEach(el=>io.observe(el));
+  } else {
+    // Fallback: reveal everything if IntersectionObserver not available
+    revealElements.forEach(el=>el.classList.add('in-view'));
   }
-  // Immediate fallback reveal for elements currently visible in viewport on page load
-  revealElements.forEach(el => {
-    const r = el.getBoundingClientRect();
-    if(r.top < window.innerHeight && r.bottom > 0) el.classList.add('in-view');
+  // Use rAF so layout is settled before checking viewport positions
+  requestAnimationFrame(()=>{
+    revealElements.forEach(el => {
+      const r = el.getBoundingClientRect();
+      if(r.top < window.innerHeight && r.bottom > 0) el.classList.add('in-view');
+    });
   });
 }
+// Run once immediately (catches async-built content too)
 initReveals();
-window.addEventListener('DOMContentLoaded', initReveals);
+// Run again when DOM is fully parsed
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>requestAnimationFrame(initReveals));
+}
 
 /* ---------- Contact form submit handler (Web3Forms Asynchronous Submission) ---------- */
 // Insert your free Web3Forms Access Key from https://web3forms.com below
